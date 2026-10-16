@@ -8,9 +8,8 @@ library(tidyverse)
 # Data preparation
 #####
 
-list.files("Misinformation/Dataframes")   # does this folder exist from here?
 
-df_inf <- read.csv("Misinformation/Dataframes/16Oct_full_model_H2.csv", skip = 6)
+df_inf <- read.csv(".csv", skip = 6)
 
 df_inf <- df_inf |> 
   rename(N = count.patches) |> 
