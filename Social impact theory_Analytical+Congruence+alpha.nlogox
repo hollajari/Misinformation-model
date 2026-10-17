@@ -1,0 +1,1376 @@
+<?xml version="1.0" encoding="utf-8"?>
+<model version="NetLogo 7.0.4" snapToGrid="true">
+  <code><![CDATA[globals [
+  sum-of-spins   ;; sum of all the spins (agents believing in misinformation)
+  flips 
+  last-flip-tick 
+  initial-sum 
+  total-flips 
+  n-clusters 
+  largest-cluster 
+  largest-believer-cluster 
+  initial-clusters 
+  initial-largest
+]
+
+
+patches-own [
+  spin           ;; holds -1 or 1
+  persuasiveness
+  supportiveness
+  H
+  A ;; Analytical thinking
+  C ;; Congruence with the misinformation (i.e., does the misinformation support or go against ones own belief system)
+  alpha ;; Individual susceptibility to distant information/persuasion (= 1 / alpha)
+  
+  ever-flipped?
+  cluster-id
+]
+
+to setup
+  clear-all
+  ask patches [
+    ifelse random 100 < probability-of-spin-up
+      [ set spin  1 ]
+      [ set spin -1 ]
+    recolor
+  ]
+  ask patches [
+   set persuasiveness  random 100
+   set supportiveness  random 100
+   set A max list 0 (random-normal mean-init-A sd-init-A) ;; randomly generate values for individual Analytical thinking, limited to positive values
+   set H random max-H
+   set alpha max list 1 (random-normal mean-init-alpha sd-init-alpha) ;; randomly generate values for a (influence of distance), limited to positive values
+   set ever-flipped? false 
+    ifelse random 100 < probability-of-convergence 
+      [ set C  1 ]
+      [ set C -1 ]
+  ]
+
+  set sum-of-spins sum [ spin ] of patches
+  
+  set last-flip-tick 0
+  set total-flips 0
+  set initial-sum sum-of-spins
+  find-clusters
+  set initial-clusters n-clusters
+  set initial-largest largest-cluster
+  
+  reset-ticks
+end
+
+to go
+  set flips 0
+
+  repeat 100 [
+    tick-advance 1
+    ask one-of patches [ update ]
+  ]
+  find-clusters  
+  update-plots
+
+end
+  
+to update  ;; patch procedure, called as: ask one-of patches [ update ]
+  let px pxcor
+  let py pycor
+  let p spin
+  let my-alpha alpha
+
+  let SIs sum [ 2 * supportiveness / ((distancexy px py) ^ my-alpha) ] of other patches with [ spin = p ]
+  let SIp sum [ 2 * persuasiveness / ((distancexy px py) ^ my-alpha) ] of other patches with [ spin != p ]
+
+  let field (p * (SIs - SIp)) - (gamma * A) + (delta * C) + H
+  if field > 0 [ set spin 1 ]
+  if field < 0 [ set spin -1 ]                   ;; field = 0: keep current opinion
+
+  if spin != p [
+    set sum-of-spins sum-of-spins + 2 * spin
+    set flips flips + 1
+    set total-flips total-flips + 1
+    set last-flip-tick ticks
+    set ever-flipped? true
+  ]
+  
+  recolor
+end
+
+;; color the patches according to their spin
+to recolor  ;; patch procedure
+  ifelse spin = 1
+    [ set pcolor red + 2 ]
+    [ set pcolor blue - 2 ]
+end
+
+;; a measure of magnetization, the average of the spins
+to-report magnetization
+  report sum-of-spins / count patches
+end
+
+to-report frac-believing
+  report (1 + magnetization) / 2
+end
+
+to-report outcome      ;; 1 = all believe, -1 = none believe, 0 = mixed
+  ifelse sum-of-spins = count patches [ report 1 ]
+  [ ifelse sum-of-spins = (- count patches) [ report -1 ] [ report 0 ] ]
+end
+
+to find-clusters
+  ask patches [ set cluster-id -1 ]
+  set n-clusters 0
+  set largest-cluster 0
+  set largest-believer-cluster 0
+  ask patches [
+    if cluster-id = -1 [
+      let my-spin spin
+      let members (patch-set self)
+      let frontier (patch-set self)
+      set cluster-id n-clusters
+      while [ any? frontier ] [
+        let new-patches (patch-set [ neighbors4 ] of frontier) with [ cluster-id = -1 and spin = my-spin ]
+        ask new-patches [ set cluster-id n-clusters ]
+        set members (patch-set members new-patches)
+        set frontier new-patches
+      ]
+      let cluster-size count members
+      set largest-cluster max (list largest-cluster cluster-size)
+      if my-spin = 1 [
+        set largest-believer-cluster max (list largest-believer-cluster cluster-size)
+      ]
+      set n-clusters n-clusters + 1
+    ]
+  ]
+end
+
+to-report cluster-count
+  report n-clusters
+end
+
+to-report largest-cluster-fraction
+  report largest-cluster / count patches
+end
+
+to-report largest-believer-cluster-fraction
+  report largest-believer-cluster / count patches
+end
+
+to-report initial-fraction
+  report (1 + initial-sum / count patches) / 2
+end
+
+to-report persistent-fraction
+  report (count patches with [ not ever-flipped? ]) / count patches
+end
+
+to-report interface-density
+  let directed-links sum [ count neighbors4 ] of patches
+  if directed-links = 0 [ report 0 ]
+
+  let disagreements sum [
+    count neighbors4 with [ spin != [spin] of myself ]
+  ] of patches
+
+  report disagreements / directed-links
+end]]></code>
+  <widgets>
+    <view x="315" wrappingAllowedX="true" y="10" frameRate="1000.0" minPycor="-10" height="434" showTickCounter="true" patchSize="20.24" fontSize="10" wrappingAllowedY="true" width="433" tickCounterLabel="attempted flips" maxPycor="10" updateMode="1" maxPxcor="10" minPxcor="-10"></view>
+    <button x="160" y="45" height="33" disableUntilTicks="true" forever="true" kind="Observer" width="145" sizeVersion="0">go</button>
+    <slider x="10" step="1" y="80" max="100" display="max-h" height="33" min="0" direction="Horizontal" default="100.0" variable="max-h" width="296" sizeVersion="0"></slider>
+    <monitor x="100" precision="3" y="115" height="45" fontSize="11" display="magnetization" width="114" sizeVersion="0">magnetization</monitor>
+    <plot x="10" autoPlotX="true" yMax="1.0" autoPlotY="true" yAxis="average spin" y="165" xMin="0.0" height="280" legend="false" xMax="20.0" yMin="-1.0" xAxis="time" display="Magnetization" width="296" sizeVersion="0">
+      <setup></setup>
+      <update></update>
+      <pen interval="1.0" mode="0" display="average spin" color="-13345367" legend="true">
+        <setup></setup>
+        <update>plotxy ticks magnetization</update>
+      </pen>
+      <pen interval="1.0" mode="0" display="axis" color="-16777216" legend="true">
+        <setup>;; draw a horizontal line to show the x axis
+auto-plot-off
+plotxy 0 0
+plotxy 1000000000000000 0
+auto-plot-on</setup>
+        <update></update>
+      </pen>
+    </plot>
+    <slider x="10" step="1" y="10" max="100" display="probability-of-spin-up" height="33" min="0" direction="Horizontal" default="50.0" variable="probability-of-spin-up" units="%" width="295" sizeVersion="0"></slider>
+    <button x="10" y="45" height="33" disableUntilTicks="false" forever="false" kind="Observer" width="145" sizeVersion="0">setup</button>
+    <button x="235" y="115" height="33" disableUntilTicks="false" forever="false" kind="Observer" width="63" sizeVersion="0">go</button>
+    <slider x="765" step="0.1" y="10" max="1" width="250" display="mean-init-A" height="50" min="0" direction="Horizontal" default="1.0" variable="mean-init-A"></slider>
+    <slider x="765" step="0.02" y="70" max="0.2" width="250" display="sd-init-A" height="50" min="0" direction="Horizontal" default="0.0" variable="sd-init-A"></slider>
+    <slider x="765" step="0.5" y="130" max="10" width="250" display="gamma" height="50" min="0" direction="Horizontal" default="0.0" variable="gamma"></slider>
+    <slider x="1025" step="1" y="10" max="100" width="250" display="probability-of-convergence" height="50" min="0" direction="Horizontal" default="100.0" variable="probability-of-convergence" units="%"></slider>
+    <slider x="1025" step="0.5" y="70" max="10" width="250" display="delta" height="50" min="0" direction="Horizontal" default="0.0" variable="delta"></slider>
+    <slider x="1285" step="1" y="10" max="10" width="250" display="mean-init-alpha" height="50" min="1" direction="Horizontal" default="5.0" variable="mean-init-alpha"></slider>
+    <slider x="1285" step="0.2" y="70" max="1" width="250" display="sd-init-alpha" height="50" min="0" direction="Horizontal" default="0.0" variable="sd-init-alpha"></slider>
+  </widgets>
+  <info><![CDATA[## WHAT IS IT?
+
+The Social Impact Model is based on the psychological theory of Latané (1981). Latané introduced many ideas and concepts from complex systems theory into social psychology. 
+In this theory, opinion change depends on social impact. 
+
+See:
+Lewenstein, M., Nowak, A., & Latané, B. (1992). Statistical mechanics of social impact. Physical Review A, 45(2), 763–776. https://doi.org/10.1103/PhysRevA.45.763
+
+Holyst, J. A., Kacperski, K., & Schweitzer, F. (2001). Social impact models of opinion dynamics. In Annual Reviews of Computational Physics IX: Vol. Volume 9 (pp. 253–273). WORLD SCIENTIFIC. https://doi.org/10.1142/9789812811578_0005
+
+The current model has been adapt from this original idea to the context of misinformation spread. This version only includes the addition of Analytical thinking, Partisanship bias and Susceptibility to distant information.
+
+## HOW IT WORKS
+
+We defined to possible states per patch, believing (+1) or not believing (-1) in a specific piece of misinformation. Believing in misinformation is represented by colouring a specific patch red, not believing in blue.
+
+The social impact is a function of the persuasiveness of opponents (connected agents with the opposite opinion), the supportiveness of supporters (with the same opinion), and the distance to these agents). All of these parameters have positive random values. 
+Lewenstein et al. (1992) present analytical mean-field solutions for fully connected networks. 
+
+Additionally, our full adapted model includes individual level variables: Analytical thinking (A), Partisanship bias (B), Susceptibility to distant information (1 / alpha). H has been adapted to represent fact-checking campaign which pushes individuals to not believe in a piece of information. A and alpha are samplde from a normal distribution. H is sampled from a uniform distribution. Partisanship bias is represented either as -1 or 1, indicating if the misinformation overlaps with an individuals overall belief system. This is sampled per individuals based on an adjustable probability.
+
+## HOW TO USE IT
+
+You can control the proportion of spins that start at +1 using the PROBABILITY-OF-SPIN-UP slider. If you want all spins to be +1, set this slider to 100%. If you want all spins to be -1, set it to 0%.
+
+Analytical thiking can be controlled using the sliders mean.init.A and sd.init.A. A is then sampled from this normal distribution for each patch.
+
+The probability that a patch is biased towards the piece of information can be controlled using the slider probability.of.convergence. If this is set to 100% all patches will be biased towards believing in the misinformation.
+
+The external fact-checking campaign H can also be controlled with the slider. H is uniformly distributed between 0 and h-max.
+
+Then press GO to watch the model run.
+
+The magnetization of the system is the average (mean) of all the spins. The MAGNETIZATION monitor and plot show you the current magnetization and how it has varied so far over time. Various other order parameters have been added to the original model that can be used for further analysis outside of Netlogo.
+
+## THINGS TO NOTICE
+
+Without individual fields, the model ends up with an infinite number of stationary states, one of which is usually dominant.
+In the presence of individual fields, some minority opinions can become metastable. These metastable opinions may persist for some time, but eventually, due to noise or other factors, they may suddenly shrink to smaller clusters. These smaller clusters can also persist for some time before shrinking again, and the process repeats itself, resulting in the staircase behavior.
+
+## HOW TO CITE
+
+Please cite the NetLogo software as:
+
+* Wilensky, U. (1999). NetLogo. http://ccl.northwestern.edu/netlogo/. Center for Connected Learning and Computer-Based Modeling, Northwestern University, Evanston, IL.
+
+## COPYRIGHT AND LICENSE
+
+Copyright 2003 Uri Wilensky.
+
+![CC BY-NC-SA 3.0](http://ccl.northwestern.edu/images/creativecommons/byncsa.png)
+
+This work is licensed under the Creative Commons Attribution-NonCommercial-ShareAlike 3.0 License.  To view a copy of this license, visit https://creativecommons.org/licenses/by-nc-sa/3.0/ or send a letter to Creative Commons, 559 Nathan Abbott Way, Stanford, California 94305, USA.
+
+Commercial licenses are also available. To inquire about commercial licenses, please contact Uri Wilensky at uri@northwestern.edu.
+
+This model was created as part of the projects: PARTICIPATORY SIMULATIONS: NETWORK-BASED DESIGN FOR SYSTEMS LEARNING IN CLASSROOMS and/or INTEGRATED SIMULATION AND MODELING ENVIRONMENT. The project gratefully acknowledges the support of the National Science Foundation (REPP & ROLE programs) -- grant numbers REC #9814682 and REC-0126227.
+
+<!-- 2003 -->]]></info>
+  <turtleShapes>
+    <shape name="default" rotatable="true" editableColorIndex="0">
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="150" y="5"></point>
+        <point x="40" y="250"></point>
+        <point x="150" y="205"></point>
+        <point x="260" y="250"></point>
+      </polygon>
+    </shape>
+    <shape name="airplane" rotatable="true" editableColorIndex="0">
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="150" y="0"></point>
+        <point x="135" y="15"></point>
+        <point x="120" y="60"></point>
+        <point x="120" y="105"></point>
+        <point x="15" y="165"></point>
+        <point x="15" y="195"></point>
+        <point x="120" y="180"></point>
+        <point x="135" y="240"></point>
+        <point x="105" y="270"></point>
+        <point x="120" y="285"></point>
+        <point x="150" y="270"></point>
+        <point x="180" y="285"></point>
+        <point x="210" y="270"></point>
+        <point x="165" y="240"></point>
+        <point x="180" y="180"></point>
+        <point x="285" y="195"></point>
+        <point x="285" y="165"></point>
+        <point x="180" y="105"></point>
+        <point x="180" y="60"></point>
+        <point x="165" y="15"></point>
+      </polygon>
+    </shape>
+    <shape name="arrow" rotatable="true" editableColorIndex="0">
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="150" y="0"></point>
+        <point x="0" y="150"></point>
+        <point x="105" y="150"></point>
+        <point x="105" y="293"></point>
+        <point x="195" y="293"></point>
+        <point x="195" y="150"></point>
+        <point x="300" y="150"></point>
+      </polygon>
+    </shape>
+    <shape name="box" rotatable="false" editableColorIndex="0">
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="150" y="285"></point>
+        <point x="285" y="225"></point>
+        <point x="285" y="75"></point>
+        <point x="150" y="135"></point>
+      </polygon>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="150" y="135"></point>
+        <point x="15" y="75"></point>
+        <point x="150" y="15"></point>
+        <point x="285" y="75"></point>
+      </polygon>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="15" y="75"></point>
+        <point x="15" y="225"></point>
+        <point x="150" y="285"></point>
+        <point x="150" y="135"></point>
+      </polygon>
+      <line endX="150" startY="285" marked="false" color="255" endY="135" startX="150"></line>
+      <line endX="15" startY="135" marked="false" color="255" endY="75" startX="150"></line>
+      <line endX="285" startY="135" marked="false" color="255" endY="75" startX="150"></line>
+    </shape>
+    <shape name="bug" rotatable="true" editableColorIndex="0">
+      <circle x="96" y="182" marked="true" color="-1920102913" diameter="108" filled="true"></circle>
+      <circle x="110" y="127" marked="true" color="-1920102913" diameter="80" filled="true"></circle>
+      <circle x="110" y="75" marked="true" color="-1920102913" diameter="80" filled="true"></circle>
+      <line endX="80" startY="100" marked="true" color="-1920102913" endY="30" startX="150"></line>
+      <line endX="220" startY="100" marked="true" color="-1920102913" endY="30" startX="150"></line>
+    </shape>
+    <shape name="butterfly" rotatable="true" editableColorIndex="0">
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="150" y="165"></point>
+        <point x="209" y="199"></point>
+        <point x="225" y="225"></point>
+        <point x="225" y="255"></point>
+        <point x="195" y="270"></point>
+        <point x="165" y="255"></point>
+        <point x="150" y="240"></point>
+      </polygon>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="150" y="165"></point>
+        <point x="89" y="198"></point>
+        <point x="75" y="225"></point>
+        <point x="75" y="255"></point>
+        <point x="105" y="270"></point>
+        <point x="135" y="255"></point>
+        <point x="150" y="240"></point>
+      </polygon>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="139" y="148"></point>
+        <point x="100" y="105"></point>
+        <point x="55" y="90"></point>
+        <point x="25" y="90"></point>
+        <point x="10" y="105"></point>
+        <point x="10" y="135"></point>
+        <point x="25" y="180"></point>
+        <point x="40" y="195"></point>
+        <point x="85" y="194"></point>
+        <point x="139" y="163"></point>
+      </polygon>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="162" y="150"></point>
+        <point x="200" y="105"></point>
+        <point x="245" y="90"></point>
+        <point x="275" y="90"></point>
+        <point x="290" y="105"></point>
+        <point x="290" y="135"></point>
+        <point x="275" y="180"></point>
+        <point x="260" y="195"></point>
+        <point x="215" y="195"></point>
+        <point x="162" y="165"></point>
+      </polygon>
+      <polygon color="255" filled="true" marked="false">
+        <point x="150" y="255"></point>
+        <point x="135" y="225"></point>
+        <point x="120" y="150"></point>
+        <point x="135" y="120"></point>
+        <point x="150" y="105"></point>
+        <point x="165" y="120"></point>
+        <point x="180" y="150"></point>
+        <point x="165" y="225"></point>
+      </polygon>
+      <circle x="135" y="90" marked="false" color="255" diameter="30" filled="true"></circle>
+      <line endX="195" startY="105" marked="false" color="255" endY="60" startX="150"></line>
+      <line endX="105" startY="105" marked="false" color="255" endY="60" startX="150"></line>
+    </shape>
+    <shape name="car" rotatable="false" editableColorIndex="0">
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="300" y="180"></point>
+        <point x="279" y="164"></point>
+        <point x="261" y="144"></point>
+        <point x="240" y="135"></point>
+        <point x="226" y="132"></point>
+        <point x="213" y="106"></point>
+        <point x="203" y="84"></point>
+        <point x="185" y="63"></point>
+        <point x="159" y="50"></point>
+        <point x="135" y="50"></point>
+        <point x="75" y="60"></point>
+        <point x="0" y="150"></point>
+        <point x="0" y="165"></point>
+        <point x="0" y="225"></point>
+        <point x="300" y="225"></point>
+        <point x="300" y="180"></point>
+      </polygon>
+      <circle x="180" y="180" marked="false" color="255" diameter="90" filled="true"></circle>
+      <circle x="30" y="180" marked="false" color="255" diameter="90" filled="true"></circle>
+      <polygon color="255" filled="true" marked="false">
+        <point x="162" y="80"></point>
+        <point x="132" y="78"></point>
+        <point x="134" y="135"></point>
+        <point x="209" y="135"></point>
+        <point x="194" y="105"></point>
+        <point x="189" y="96"></point>
+        <point x="180" y="89"></point>
+      </polygon>
+      <circle x="47" y="195" marked="true" color="-1920102913" diameter="58" filled="true"></circle>
+      <circle x="195" y="195" marked="true" color="-1920102913" diameter="58" filled="true"></circle>
+    </shape>
+    <shape name="circle" rotatable="false" editableColorIndex="0">
+      <circle x="0" y="0" marked="true" color="-1920102913" diameter="300" filled="true"></circle>
+    </shape>
+    <shape name="circle 2" rotatable="false" editableColorIndex="0">
+      <circle x="0" y="0" marked="true" color="-1920102913" diameter="300" filled="true"></circle>
+      <circle x="30" y="30" marked="false" color="255" diameter="240" filled="true"></circle>
+    </shape>
+    <shape name="cow" rotatable="false" editableColorIndex="0">
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="200" y="193"></point>
+        <point x="197" y="249"></point>
+        <point x="179" y="249"></point>
+        <point x="177" y="196"></point>
+        <point x="166" y="187"></point>
+        <point x="140" y="189"></point>
+        <point x="93" y="191"></point>
+        <point x="78" y="179"></point>
+        <point x="72" y="211"></point>
+        <point x="49" y="209"></point>
+        <point x="48" y="181"></point>
+        <point x="37" y="149"></point>
+        <point x="25" y="120"></point>
+        <point x="25" y="89"></point>
+        <point x="45" y="72"></point>
+        <point x="103" y="84"></point>
+        <point x="179" y="75"></point>
+        <point x="198" y="76"></point>
+        <point x="252" y="64"></point>
+        <point x="272" y="81"></point>
+        <point x="293" y="103"></point>
+        <point x="285" y="121"></point>
+        <point x="255" y="121"></point>
+        <point x="242" y="118"></point>
+        <point x="224" y="167"></point>
+      </polygon>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="73" y="210"></point>
+        <point x="86" y="251"></point>
+        <point x="62" y="249"></point>
+        <point x="48" y="208"></point>
+      </polygon>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="25" y="114"></point>
+        <point x="16" y="195"></point>
+        <point x="9" y="204"></point>
+        <point x="23" y="213"></point>
+        <point x="25" y="200"></point>
+        <point x="39" y="123"></point>
+      </polygon>
+    </shape>
+    <shape name="cylinder" rotatable="false" editableColorIndex="0">
+      <circle x="0" y="0" marked="true" color="-1920102913" diameter="300" filled="true"></circle>
+    </shape>
+    <shape name="dot" rotatable="false" editableColorIndex="0">
+      <circle x="90" y="90" marked="true" color="-1920102913" diameter="120" filled="true"></circle>
+    </shape>
+    <shape name="face happy" rotatable="false" editableColorIndex="0">
+      <circle x="8" y="8" marked="true" color="-1920102913" diameter="285" filled="true"></circle>
+      <circle x="60" y="75" marked="false" color="255" diameter="60" filled="true"></circle>
+      <circle x="180" y="75" marked="false" color="255" diameter="60" filled="true"></circle>
+      <polygon color="255" filled="true" marked="false">
+        <point x="150" y="255"></point>
+        <point x="90" y="239"></point>
+        <point x="62" y="213"></point>
+        <point x="47" y="191"></point>
+        <point x="67" y="179"></point>
+        <point x="90" y="203"></point>
+        <point x="109" y="218"></point>
+        <point x="150" y="225"></point>
+        <point x="192" y="218"></point>
+        <point x="210" y="203"></point>
+        <point x="227" y="181"></point>
+        <point x="251" y="194"></point>
+        <point x="236" y="217"></point>
+        <point x="212" y="240"></point>
+      </polygon>
+    </shape>
+    <shape name="face neutral" rotatable="false" editableColorIndex="0">
+      <circle x="8" y="7" marked="true" color="-1920102913" diameter="285" filled="true"></circle>
+      <circle x="60" y="75" marked="false" color="255" diameter="60" filled="true"></circle>
+      <circle x="180" y="75" marked="false" color="255" diameter="60" filled="true"></circle>
+      <rectangle endX="240" startY="195" marked="false" color="255" endY="225" startX="60" filled="true"></rectangle>
+    </shape>
+    <shape name="face sad" rotatable="false" editableColorIndex="0">
+      <circle x="8" y="8" marked="true" color="-1920102913" diameter="285" filled="true"></circle>
+      <circle x="60" y="75" marked="false" color="255" diameter="60" filled="true"></circle>
+      <circle x="180" y="75" marked="false" color="255" diameter="60" filled="true"></circle>
+      <polygon color="255" filled="true" marked="false">
+        <point x="150" y="168"></point>
+        <point x="90" y="184"></point>
+        <point x="62" y="210"></point>
+        <point x="47" y="232"></point>
+        <point x="67" y="244"></point>
+        <point x="90" y="220"></point>
+        <point x="109" y="205"></point>
+        <point x="150" y="198"></point>
+        <point x="192" y="205"></point>
+        <point x="210" y="220"></point>
+        <point x="227" y="242"></point>
+        <point x="251" y="229"></point>
+        <point x="236" y="206"></point>
+        <point x="212" y="183"></point>
+      </polygon>
+    </shape>
+    <shape name="fish" rotatable="false" editableColorIndex="0">
+      <polygon color="-1" filled="true" marked="false">
+        <point x="44" y="131"></point>
+        <point x="21" y="87"></point>
+        <point x="15" y="86"></point>
+        <point x="0" y="120"></point>
+        <point x="15" y="150"></point>
+        <point x="0" y="180"></point>
+        <point x="13" y="214"></point>
+        <point x="20" y="212"></point>
+        <point x="45" y="166"></point>
+      </polygon>
+      <polygon color="-1" filled="true" marked="false">
+        <point x="135" y="195"></point>
+        <point x="119" y="235"></point>
+        <point x="95" y="218"></point>
+        <point x="76" y="210"></point>
+        <point x="46" y="204"></point>
+        <point x="60" y="165"></point>
+      </polygon>
+      <polygon color="-1" filled="true" marked="false">
+        <point x="75" y="45"></point>
+        <point x="83" y="77"></point>
+        <point x="71" y="103"></point>
+        <point x="86" y="114"></point>
+        <point x="166" y="78"></point>
+        <point x="135" y="60"></point>
+      </polygon>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="30" y="136"></point>
+        <point x="151" y="77"></point>
+        <point x="226" y="81"></point>
+        <point x="280" y="119"></point>
+        <point x="292" y="146"></point>
+        <point x="292" y="160"></point>
+        <point x="287" y="170"></point>
+        <point x="270" y="195"></point>
+        <point x="195" y="210"></point>
+        <point x="151" y="212"></point>
+        <point x="30" y="166"></point>
+      </polygon>
+      <circle x="215" y="106" marked="false" color="255" diameter="30" filled="true"></circle>
+    </shape>
+    <shape name="flag" rotatable="false" editableColorIndex="0">
+      <rectangle endX="75" startY="15" marked="true" color="-1920102913" endY="300" startX="60" filled="true"></rectangle>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="90" y="150"></point>
+        <point x="270" y="90"></point>
+        <point x="90" y="30"></point>
+      </polygon>
+      <line endX="90" startY="135" marked="true" color="-1920102913" endY="135" startX="75"></line>
+      <line endX="90" startY="45" marked="true" color="-1920102913" endY="45" startX="75"></line>
+    </shape>
+    <shape name="flower" rotatable="false" editableColorIndex="0">
+      <polygon color="1504722175" filled="true" marked="false">
+        <point x="135" y="120"></point>
+        <point x="165" y="165"></point>
+        <point x="180" y="210"></point>
+        <point x="180" y="240"></point>
+        <point x="150" y="300"></point>
+        <point x="165" y="300"></point>
+        <point x="195" y="240"></point>
+        <point x="195" y="195"></point>
+        <point x="165" y="135"></point>
+      </polygon>
+      <circle x="85" y="132" marked="true" color="-1920102913" diameter="38" filled="true"></circle>
+      <circle x="130" y="147" marked="true" color="-1920102913" diameter="38" filled="true"></circle>
+      <circle x="192" y="85" marked="true" color="-1920102913" diameter="38" filled="true"></circle>
+      <circle x="85" y="40" marked="true" color="-1920102913" diameter="38" filled="true"></circle>
+      <circle x="177" y="40" marked="true" color="-1920102913" diameter="38" filled="true"></circle>
+      <circle x="177" y="132" marked="true" color="-1920102913" diameter="38" filled="true"></circle>
+      <circle x="70" y="85" marked="true" color="-1920102913" diameter="38" filled="true"></circle>
+      <circle x="130" y="25" marked="true" color="-1920102913" diameter="38" filled="true"></circle>
+      <circle x="96" y="51" marked="true" color="-1920102913" diameter="108" filled="true"></circle>
+      <circle x="113" y="68" marked="false" color="255" diameter="74" filled="true"></circle>
+      <polygon color="1504722175" filled="true" marked="false">
+        <point x="189" y="233"></point>
+        <point x="219" y="188"></point>
+        <point x="249" y="173"></point>
+        <point x="279" y="188"></point>
+        <point x="234" y="218"></point>
+      </polygon>
+      <polygon color="1504722175" filled="true" marked="false">
+        <point x="180" y="255"></point>
+        <point x="150" y="210"></point>
+        <point x="105" y="210"></point>
+        <point x="75" y="240"></point>
+        <point x="135" y="240"></point>
+      </polygon>
+    </shape>
+    <shape name="house" rotatable="false" editableColorIndex="0">
+      <rectangle endX="255" startY="120" marked="true" color="-1920102913" endY="285" startX="45" filled="true"></rectangle>
+      <rectangle endX="180" startY="210" marked="false" color="255" endY="285" startX="120" filled="true"></rectangle>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="15" y="120"></point>
+        <point x="150" y="15"></point>
+        <point x="285" y="120"></point>
+      </polygon>
+      <line endX="270" startY="120" marked="false" color="255" endY="120" startX="30"></line>
+    </shape>
+    <shape name="leaf" rotatable="false" editableColorIndex="0">
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="150" y="210"></point>
+        <point x="135" y="195"></point>
+        <point x="120" y="210"></point>
+        <point x="60" y="210"></point>
+        <point x="30" y="195"></point>
+        <point x="60" y="180"></point>
+        <point x="60" y="165"></point>
+        <point x="15" y="135"></point>
+        <point x="30" y="120"></point>
+        <point x="15" y="105"></point>
+        <point x="40" y="104"></point>
+        <point x="45" y="90"></point>
+        <point x="60" y="90"></point>
+        <point x="90" y="105"></point>
+        <point x="105" y="120"></point>
+        <point x="120" y="120"></point>
+        <point x="105" y="60"></point>
+        <point x="120" y="60"></point>
+        <point x="135" y="30"></point>
+        <point x="150" y="15"></point>
+        <point x="165" y="30"></point>
+        <point x="180" y="60"></point>
+        <point x="195" y="60"></point>
+        <point x="180" y="120"></point>
+        <point x="195" y="120"></point>
+        <point x="210" y="105"></point>
+        <point x="240" y="90"></point>
+        <point x="255" y="90"></point>
+        <point x="263" y="104"></point>
+        <point x="285" y="105"></point>
+        <point x="270" y="120"></point>
+        <point x="285" y="135"></point>
+        <point x="240" y="165"></point>
+        <point x="240" y="180"></point>
+        <point x="270" y="195"></point>
+        <point x="240" y="210"></point>
+        <point x="180" y="210"></point>
+        <point x="165" y="195"></point>
+      </polygon>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="135" y="195"></point>
+        <point x="135" y="240"></point>
+        <point x="120" y="255"></point>
+        <point x="105" y="255"></point>
+        <point x="105" y="285"></point>
+        <point x="135" y="285"></point>
+        <point x="165" y="240"></point>
+        <point x="165" y="195"></point>
+      </polygon>
+    </shape>
+    <shape name="line" rotatable="true" editableColorIndex="0">
+      <line endX="150" startY="0" marked="true" color="-1920102913" endY="300" startX="150"></line>
+    </shape>
+    <shape name="line half" rotatable="true" editableColorIndex="0">
+      <line endX="150" startY="0" marked="true" color="-1920102913" endY="150" startX="150"></line>
+    </shape>
+    <shape name="pentagon" rotatable="false" editableColorIndex="0">
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="150" y="15"></point>
+        <point x="15" y="120"></point>
+        <point x="60" y="285"></point>
+        <point x="240" y="285"></point>
+        <point x="285" y="120"></point>
+      </polygon>
+    </shape>
+    <shape name="person" rotatable="false" editableColorIndex="0">
+      <circle x="110" y="5" marked="true" color="-1920102913" diameter="80" filled="true"></circle>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="105" y="90"></point>
+        <point x="120" y="195"></point>
+        <point x="90" y="285"></point>
+        <point x="105" y="300"></point>
+        <point x="135" y="300"></point>
+        <point x="150" y="225"></point>
+        <point x="165" y="300"></point>
+        <point x="195" y="300"></point>
+        <point x="210" y="285"></point>
+        <point x="180" y="195"></point>
+        <point x="195" y="90"></point>
+      </polygon>
+      <rectangle endX="172" startY="79" marked="true" color="-1920102913" endY="94" startX="127" filled="true"></rectangle>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="195" y="90"></point>
+        <point x="240" y="150"></point>
+        <point x="225" y="180"></point>
+        <point x="165" y="105"></point>
+      </polygon>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="105" y="90"></point>
+        <point x="60" y="150"></point>
+        <point x="75" y="180"></point>
+        <point x="135" y="105"></point>
+      </polygon>
+    </shape>
+    <shape name="plant" rotatable="false" editableColorIndex="0">
+      <rectangle endX="165" startY="90" marked="true" color="-1920102913" endY="300" startX="135" filled="true"></rectangle>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="135" y="255"></point>
+        <point x="90" y="210"></point>
+        <point x="45" y="195"></point>
+        <point x="75" y="255"></point>
+        <point x="135" y="285"></point>
+      </polygon>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="165" y="255"></point>
+        <point x="210" y="210"></point>
+        <point x="255" y="195"></point>
+        <point x="225" y="255"></point>
+        <point x="165" y="285"></point>
+      </polygon>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="135" y="180"></point>
+        <point x="90" y="135"></point>
+        <point x="45" y="120"></point>
+        <point x="75" y="180"></point>
+        <point x="135" y="210"></point>
+      </polygon>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="165" y="180"></point>
+        <point x="165" y="210"></point>
+        <point x="225" y="180"></point>
+        <point x="255" y="120"></point>
+        <point x="210" y="135"></point>
+      </polygon>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="135" y="105"></point>
+        <point x="90" y="60"></point>
+        <point x="45" y="45"></point>
+        <point x="75" y="105"></point>
+        <point x="135" y="135"></point>
+      </polygon>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="165" y="105"></point>
+        <point x="165" y="135"></point>
+        <point x="225" y="105"></point>
+        <point x="255" y="45"></point>
+        <point x="210" y="60"></point>
+      </polygon>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="135" y="90"></point>
+        <point x="120" y="45"></point>
+        <point x="150" y="15"></point>
+        <point x="180" y="45"></point>
+        <point x="165" y="90"></point>
+      </polygon>
+    </shape>
+    <shape name="square" rotatable="false" editableColorIndex="0">
+      <rectangle endX="270" startY="30" marked="true" color="-1920102913" endY="270" startX="30" filled="true"></rectangle>
+    </shape>
+    <shape name="square 2" rotatable="false" editableColorIndex="0">
+      <rectangle endX="270" startY="30" marked="true" color="-1920102913" endY="270" startX="30" filled="true"></rectangle>
+      <rectangle endX="240" startY="60" marked="false" color="255" endY="240" startX="60" filled="true"></rectangle>
+    </shape>
+    <shape name="star" rotatable="false" editableColorIndex="0">
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="151" y="1"></point>
+        <point x="185" y="108"></point>
+        <point x="298" y="108"></point>
+        <point x="207" y="175"></point>
+        <point x="242" y="282"></point>
+        <point x="151" y="216"></point>
+        <point x="59" y="282"></point>
+        <point x="94" y="175"></point>
+        <point x="3" y="108"></point>
+        <point x="116" y="108"></point>
+      </polygon>
+    </shape>
+    <shape name="target" rotatable="false" editableColorIndex="0">
+      <circle x="0" y="0" marked="true" color="-1920102913" diameter="300" filled="true"></circle>
+      <circle x="30" y="30" marked="false" color="255" diameter="240" filled="true"></circle>
+      <circle x="60" y="60" marked="true" color="-1920102913" diameter="180" filled="true"></circle>
+      <circle x="90" y="90" marked="false" color="255" diameter="120" filled="true"></circle>
+      <circle x="120" y="120" marked="true" color="-1920102913" diameter="60" filled="true"></circle>
+    </shape>
+    <shape name="tree" rotatable="false" editableColorIndex="0">
+      <circle x="118" y="3" marked="true" color="-1920102913" diameter="94" filled="true"></circle>
+      <rectangle endX="180" startY="195" marked="false" color="-1653716737" endY="300" startX="120" filled="true"></rectangle>
+      <circle x="65" y="21" marked="true" color="-1920102913" diameter="108" filled="true"></circle>
+      <circle x="116" y="41" marked="true" color="-1920102913" diameter="127" filled="true"></circle>
+      <circle x="45" y="90" marked="true" color="-1920102913" diameter="120" filled="true"></circle>
+      <circle x="104" y="74" marked="true" color="-1920102913" diameter="152" filled="true"></circle>
+    </shape>
+    <shape name="triangle" rotatable="false" editableColorIndex="0">
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="150" y="30"></point>
+        <point x="15" y="255"></point>
+        <point x="285" y="255"></point>
+      </polygon>
+    </shape>
+    <shape name="triangle 2" rotatable="false" editableColorIndex="0">
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="150" y="30"></point>
+        <point x="15" y="255"></point>
+        <point x="285" y="255"></point>
+      </polygon>
+      <polygon color="255" filled="true" marked="false">
+        <point x="151" y="99"></point>
+        <point x="225" y="223"></point>
+        <point x="75" y="224"></point>
+      </polygon>
+    </shape>
+    <shape name="truck" rotatable="false" editableColorIndex="0">
+      <rectangle endX="195" startY="45" marked="true" color="-1920102913" endY="187" startX="4" filled="true"></rectangle>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="296" y="193"></point>
+        <point x="296" y="150"></point>
+        <point x="259" y="134"></point>
+        <point x="244" y="104"></point>
+        <point x="208" y="104"></point>
+        <point x="207" y="194"></point>
+      </polygon>
+      <rectangle endX="195" startY="60" marked="false" color="-1" endY="105" startX="195" filled="true"></rectangle>
+      <polygon color="255" filled="true" marked="false">
+        <point x="238" y="112"></point>
+        <point x="252" y="141"></point>
+        <point x="219" y="141"></point>
+        <point x="218" y="112"></point>
+      </polygon>
+      <circle x="234" y="174" marked="false" color="255" diameter="42" filled="true"></circle>
+      <rectangle endX="214" startY="185" marked="true" color="-1920102913" endY="194" startX="181" filled="true"></rectangle>
+      <circle x="144" y="174" marked="false" color="255" diameter="42" filled="true"></circle>
+      <circle x="24" y="174" marked="false" color="255" diameter="42" filled="true"></circle>
+      <circle x="24" y="174" marked="true" color="-1920102913" diameter="42" filled="false"></circle>
+      <circle x="144" y="174" marked="true" color="-1920102913" diameter="42" filled="false"></circle>
+      <circle x="234" y="174" marked="true" color="-1920102913" diameter="42" filled="false"></circle>
+    </shape>
+    <shape name="turtle" rotatable="true" editableColorIndex="0">
+      <polygon color="1504722175" filled="true" marked="false">
+        <point x="215" y="204"></point>
+        <point x="240" y="233"></point>
+        <point x="246" y="254"></point>
+        <point x="228" y="266"></point>
+        <point x="215" y="252"></point>
+        <point x="193" y="210"></point>
+      </polygon>
+      <polygon color="1504722175" filled="true" marked="false">
+        <point x="195" y="90"></point>
+        <point x="225" y="75"></point>
+        <point x="245" y="75"></point>
+        <point x="260" y="89"></point>
+        <point x="269" y="108"></point>
+        <point x="261" y="124"></point>
+        <point x="240" y="105"></point>
+        <point x="225" y="105"></point>
+        <point x="210" y="105"></point>
+      </polygon>
+      <polygon color="1504722175" filled="true" marked="false">
+        <point x="105" y="90"></point>
+        <point x="75" y="75"></point>
+        <point x="55" y="75"></point>
+        <point x="40" y="89"></point>
+        <point x="31" y="108"></point>
+        <point x="39" y="124"></point>
+        <point x="60" y="105"></point>
+        <point x="75" y="105"></point>
+        <point x="90" y="105"></point>
+      </polygon>
+      <polygon color="1504722175" filled="true" marked="false">
+        <point x="132" y="85"></point>
+        <point x="134" y="64"></point>
+        <point x="107" y="51"></point>
+        <point x="108" y="17"></point>
+        <point x="150" y="2"></point>
+        <point x="192" y="18"></point>
+        <point x="192" y="52"></point>
+        <point x="169" y="65"></point>
+        <point x="172" y="87"></point>
+      </polygon>
+      <polygon color="1504722175" filled="true" marked="false">
+        <point x="85" y="204"></point>
+        <point x="60" y="233"></point>
+        <point x="54" y="254"></point>
+        <point x="72" y="266"></point>
+        <point x="85" y="252"></point>
+        <point x="107" y="210"></point>
+      </polygon>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="119" y="75"></point>
+        <point x="179" y="75"></point>
+        <point x="209" y="101"></point>
+        <point x="224" y="135"></point>
+        <point x="220" y="225"></point>
+        <point x="175" y="261"></point>
+        <point x="128" y="261"></point>
+        <point x="81" y="224"></point>
+        <point x="74" y="135"></point>
+        <point x="88" y="99"></point>
+      </polygon>
+    </shape>
+    <shape name="wheel" rotatable="false" editableColorIndex="0">
+      <circle x="3" y="3" marked="true" color="-1920102913" diameter="294" filled="true"></circle>
+      <circle x="30" y="30" marked="false" color="255" diameter="240" filled="true"></circle>
+      <line endX="150" startY="285" marked="true" color="-1920102913" endY="15" startX="150"></line>
+      <line endX="285" startY="150" marked="true" color="-1920102913" endY="150" startX="15"></line>
+      <circle x="120" y="120" marked="true" color="-1920102913" diameter="60" filled="true"></circle>
+      <line endX="79" startY="40" marked="true" color="-1920102913" endY="269" startX="216"></line>
+      <line endX="269" startY="84" marked="true" color="-1920102913" endY="221" startX="40"></line>
+      <line endX="269" startY="216" marked="true" color="-1920102913" endY="79" startX="40"></line>
+      <line endX="221" startY="40" marked="true" color="-1920102913" endY="269" startX="84"></line>
+    </shape>
+    <shape name="x" rotatable="false" editableColorIndex="0">
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="270" y="75"></point>
+        <point x="225" y="30"></point>
+        <point x="30" y="225"></point>
+        <point x="75" y="270"></point>
+      </polygon>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="30" y="75"></point>
+        <point x="75" y="30"></point>
+        <point x="270" y="225"></point>
+        <point x="225" y="270"></point>
+      </polygon>
+    </shape>
+  </turtleShapes>
+  <linkShapes>
+    <shape name="default" curviness="0.0">
+      <lines>
+        <line x="-0.2" visible="false">
+          <dash value="0.0"></dash>
+          <dash value="1.0"></dash>
+        </line>
+        <line x="0.0" visible="true">
+          <dash value="1.0"></dash>
+          <dash value="0.0"></dash>
+        </line>
+        <line x="0.2" visible="false">
+          <dash value="0.0"></dash>
+          <dash value="1.0"></dash>
+        </line>
+      </lines>
+      <indicator>
+        <shape name="link direction" rotatable="true" editableColorIndex="0">
+          <line endX="90" startY="150" marked="true" color="-1920102913" endY="180" startX="150"></line>
+          <line endX="210" startY="150" marked="true" color="-1920102913" endY="180" startX="150"></line>
+        </shape>
+      </indicator>
+    </shape>
+  </linkShapes>
+  <previewCommands>setup repeat 75 [ go ]</previewCommands>
+  <experiments>
+    <experiment name="experiment" repetitions="1" sequentialRunOrder="true" runMetricsEveryStep="true" timeLimit="400000">
+      <setup>setup</setup>
+      <go>go</go>
+      <metrics>
+        <metric>magnetization</metric>
+      </metrics>
+      <constants>
+        <enumeratedValueSet variable="max-h">
+          <value value="100"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="probability-of-spin-up">
+          <value value="50"></value>
+        </enumeratedValueSet>
+      </constants>
+    </experiment>
+    <experiment name="15Oct_A&amp;C" repetitions="10" sequentialRunOrder="true" runMetricsEveryStep="true">
+      <setup>setup</setup>
+      <go>go</go>
+      <exitCondition><![CDATA[ticks >= 25000]]></exitCondition>
+      <metrics>
+        <metric>ticks</metric>
+        <metric>last-flip-tick</metric>
+        <metric>stable?</metric>
+        <metric>outcome</metric>
+        <metric>initial-fraction</metric>
+        <metric>frac-believing</metric>
+        <metric>magnetization</metric>
+        <metric>total-flips</metric>
+        <metric>persistent-fraction</metric>
+        <metric>interface-density</metric>
+        <metric>cluster-count</metric>
+        <metric>largest-cluster-fraction</metric>
+        <metric>largest-believer-cluster-fraction</metric>
+        <metric>initial-clusters</metric>
+        <metric>initial-largest</metric>
+        <metric>count patches</metric>
+      </metrics>
+      <constants>
+        <steppedValueSet variable="mean-init-A" first="0" step="0.2" last="1"></steppedValueSet>
+        <enumeratedValueSet variable="sd-init-A">
+          <value value="0.2"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="gamma">
+          <value value="10"></value>
+        </enumeratedValueSet>
+        <steppedValueSet variable="probability-of-convergence" first="0" step="20" last="100"></steppedValueSet>
+        <enumeratedValueSet variable="delta">
+          <value value="10"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="max-h">
+          <value value="100"></value>
+        </enumeratedValueSet>
+        <steppedValueSet variable="probability-of-spin-up" first="5" step="10" last="95"></steppedValueSet>
+      </constants>
+    </experiment>
+    <experiment name="14Oct_1stTry_H=0" repetitions="10" sequentialRunOrder="true" runMetricsEveryStep="true">
+      <setup>setup</setup>
+      <go>go</go>
+      <exitCondition><![CDATA[ticks >= 50000]]></exitCondition>
+      <metrics>
+        <metric>ticks</metric>
+        <metric>last-flip-tick</metric>
+        <metric>stable?</metric>
+        <metric>outcome</metric>
+        <metric>initial-fraction</metric>
+        <metric>frac-believing</metric>
+        <metric>magnetization</metric>
+        <metric>total-flips</metric>
+        <metric>persistent-fraction</metric>
+        <metric>interface-density</metric>
+        <metric>cluster-count</metric>
+        <metric>largest-cluster-fraction</metric>
+        <metric>largest-believer-cluster-fraction</metric>
+        <metric>initial-clusters</metric>
+        <metric>initial-largest</metric>
+        <metric>count patches</metric>
+      </metrics>
+      <constants>
+        <steppedValueSet variable="mean-init-A" first="0" step="0.1" last="1"></steppedValueSet>
+        <enumeratedValueSet variable="max-h">
+          <value value="0"></value>
+        </enumeratedValueSet>
+        <steppedValueSet variable="probability-of-spin-up" first="5" step="10" last="95"></steppedValueSet>
+        <enumeratedValueSet variable="sd-init-A">
+          <value value="0.2"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="gamma">
+          <value value="5"></value>
+        </enumeratedValueSet>
+      </constants>
+    </experiment>
+    <experiment name="15Oct_A&amp;C_H=0 (copy)" repetitions="10" sequentialRunOrder="true" runMetricsEveryStep="true">
+      <setup>setup</setup>
+      <go>go</go>
+      <exitCondition><![CDATA[ticks >= 25000]]></exitCondition>
+      <metrics>
+        <metric>ticks</metric>
+        <metric>last-flip-tick</metric>
+        <metric>stable?</metric>
+        <metric>outcome</metric>
+        <metric>initial-fraction</metric>
+        <metric>frac-believing</metric>
+        <metric>magnetization</metric>
+        <metric>total-flips</metric>
+        <metric>persistent-fraction</metric>
+        <metric>interface-density</metric>
+        <metric>cluster-count</metric>
+        <metric>largest-cluster-fraction</metric>
+        <metric>largest-believer-cluster-fraction</metric>
+        <metric>initial-clusters</metric>
+        <metric>initial-largest</metric>
+        <metric>count patches</metric>
+      </metrics>
+      <constants>
+        <steppedValueSet variable="mean-init-A" first="0" step="0.1" last="1"></steppedValueSet>
+        <enumeratedValueSet variable="max-h">
+          <value value="0"></value>
+        </enumeratedValueSet>
+        <steppedValueSet variable="probability-of-spin-up" first="5" step="10" last="95"></steppedValueSet>
+        <enumeratedValueSet variable="sd-init-A">
+          <value value="0.2"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="gamma">
+          <value value="5"></value>
+        </enumeratedValueSet>
+      </constants>
+    </experiment>
+    <experiment name="15Oct_A&amp;C_H-div-alpha_differing_alphas" repetitions="10" sequentialRunOrder="true" runMetricsEveryStep="true">
+      <setup>setup</setup>
+      <go>go</go>
+      <exitCondition><![CDATA[ticks >= 20000]]></exitCondition>
+      <metrics>
+        <metric>ticks</metric>
+        <metric>last-flip-tick</metric>
+        <metric>outcome</metric>
+        <metric>initial-fraction</metric>
+        <metric>frac-believing</metric>
+        <metric>magnetization</metric>
+        <metric>total-flips</metric>
+        <metric>persistent-fraction</metric>
+        <metric>interface-density</metric>
+        <metric>cluster-count</metric>
+        <metric>largest-cluster-fraction</metric>
+        <metric>largest-believer-cluster-fraction</metric>
+        <metric>initial-clusters</metric>
+        <metric>initial-largest</metric>
+        <metric>count patches</metric>
+      </metrics>
+      <constants>
+        <steppedValueSet variable="mean-init-A" first="0" step="0.3" last="1"></steppedValueSet>
+        <enumeratedValueSet variable="sd-init-A">
+          <value value="0.2"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="gamma">
+          <value value="10"></value>
+        </enumeratedValueSet>
+        <steppedValueSet variable="probability-of-convergence" first="0" step="25" last="100"></steppedValueSet>
+        <enumeratedValueSet variable="delta">
+          <value value="10"></value>
+        </enumeratedValueSet>
+        <steppedValueSet variable="max-h" first="0" step="34" last="100"></steppedValueSet>
+        <steppedValueSet variable="probability-of-spin-up" first="5" step="30" last="95"></steppedValueSet>
+        <steppedValueSet variable="mean-init-alpha" first="1" step="3" last="10"></steppedValueSet>
+        <enumeratedValueSet variable="sd-init-alpha">
+          <value value="1"></value>
+        </enumeratedValueSet>
+      </constants>
+    </experiment>
+    <experiment name="16Oct_full_model_A" repetitions="10" sequentialRunOrder="true" runMetricsEveryStep="true">
+      <setup>setup</setup>
+      <go>go</go>
+      <exitCondition><![CDATA[ticks >= 25000]]></exitCondition>
+      <metrics>
+        <metric>ticks</metric>
+        <metric>last-flip-tick</metric>
+        <metric>outcome</metric>
+        <metric>initial-fraction</metric>
+        <metric>frac-believing</metric>
+        <metric>magnetization</metric>
+        <metric>total-flips</metric>
+        <metric>persistent-fraction</metric>
+        <metric>interface-density</metric>
+        <metric>cluster-count</metric>
+        <metric>largest-cluster-fraction</metric>
+        <metric>largest-believer-cluster-fraction</metric>
+        <metric>initial-clusters</metric>
+        <metric>initial-largest</metric>
+        <metric>count patches</metric>
+      </metrics>
+      <constants>
+        <steppedValueSet variable="mean-init-A" first="0" step="0.1" last="1"></steppedValueSet>
+        <enumeratedValueSet variable="sd-init-A">
+          <value value="0.2"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="gamma">
+          <value value="100"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="probability-of-convergence">
+          <value value="50"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="delta">
+          <value value="10"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="max-h">
+          <value value="100"></value>
+        </enumeratedValueSet>
+        <steppedValueSet variable="probability-of-spin-up" first="5" step="10" last="95"></steppedValueSet>
+        <enumeratedValueSet variable="mean-init-alpha">
+          <value value="5"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="sd-init-alpha">
+          <value value="1"></value>
+        </enumeratedValueSet>
+      </constants>
+    </experiment>
+    <experiment name="16Oct_full_model_C" repetitions="10" sequentialRunOrder="true" runMetricsEveryStep="true">
+      <setup>setup</setup>
+      <go>go</go>
+      <exitCondition><![CDATA[ticks >= 25000]]></exitCondition>
+      <metrics>
+        <metric>ticks</metric>
+        <metric>last-flip-tick</metric>
+        <metric>outcome</metric>
+        <metric>initial-fraction</metric>
+        <metric>frac-believing</metric>
+        <metric>magnetization</metric>
+        <metric>total-flips</metric>
+        <metric>persistent-fraction</metric>
+        <metric>interface-density</metric>
+        <metric>cluster-count</metric>
+        <metric>largest-cluster-fraction</metric>
+        <metric>largest-believer-cluster-fraction</metric>
+        <metric>initial-clusters</metric>
+        <metric>initial-largest</metric>
+        <metric>count patches</metric>
+      </metrics>
+      <constants>
+        <enumeratedValueSet variable="mean-init-A">
+          <value value="0"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="sd-init-A">
+          <value value="0"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="gamma">
+          <value value="100"></value>
+        </enumeratedValueSet>
+        <steppedValueSet variable="probability-of-convergence" first="0" step="5" last="100"></steppedValueSet>
+        <enumeratedValueSet variable="delta">
+          <value value="100"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="max-h">
+          <value value="0"></value>
+        </enumeratedValueSet>
+        <steppedValueSet variable="probability-of-spin-up" first="5" step="10" last="95"></steppedValueSet>
+        <enumeratedValueSet variable="mean-init-alpha">
+          <value value="5"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="sd-init-alpha">
+          <value value="1"></value>
+        </enumeratedValueSet>
+      </constants>
+    </experiment>
+    <experiment name="16Oct_full_model_alpha" repetitions="10" sequentialRunOrder="true" runMetricsEveryStep="true">
+      <setup>setup</setup>
+      <go>go</go>
+      <exitCondition><![CDATA[ticks >= 25000]]></exitCondition>
+      <metrics>
+        <metric>ticks</metric>
+        <metric>last-flip-tick</metric>
+        <metric>outcome</metric>
+        <metric>initial-fraction</metric>
+        <metric>frac-believing</metric>
+        <metric>magnetization</metric>
+        <metric>total-flips</metric>
+        <metric>persistent-fraction</metric>
+        <metric>interface-density</metric>
+        <metric>cluster-count</metric>
+        <metric>largest-cluster-fraction</metric>
+        <metric>largest-believer-cluster-fraction</metric>
+        <metric>initial-clusters</metric>
+        <metric>initial-largest</metric>
+        <metric>count patches</metric>
+      </metrics>
+      <constants>
+        <enumeratedValueSet variable="mean-init-A">
+          <value value="0"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="sd-init-A">
+          <value value="0"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="gamma">
+          <value value="100"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="probability-of-convergence">
+          <value value="50"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="delta">
+          <value value="10"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="max-h">
+          <value value="0"></value>
+        </enumeratedValueSet>
+        <steppedValueSet variable="probability-of-spin-up" first="5" step="10" last="95"></steppedValueSet>
+        <steppedValueSet variable="mean-init-alpha" first="1" step="2" last="9"></steppedValueSet>
+        <enumeratedValueSet variable="sd-init-alpha">
+          <value value="1"></value>
+        </enumeratedValueSet>
+      </constants>
+    </experiment>
+    <experiment name="16Oct_full_model_H" repetitions="10" sequentialRunOrder="true" runMetricsEveryStep="true">
+      <setup>setup</setup>
+      <go>go</go>
+      <exitCondition><![CDATA[ticks >= 25000]]></exitCondition>
+      <metrics>
+        <metric>ticks</metric>
+        <metric>last-flip-tick</metric>
+        <metric>outcome</metric>
+        <metric>initial-fraction</metric>
+        <metric>frac-believing</metric>
+        <metric>magnetization</metric>
+        <metric>total-flips</metric>
+        <metric>persistent-fraction</metric>
+        <metric>interface-density</metric>
+        <metric>cluster-count</metric>
+        <metric>largest-cluster-fraction</metric>
+        <metric>largest-believer-cluster-fraction</metric>
+        <metric>initial-clusters</metric>
+        <metric>initial-largest</metric>
+        <metric>count patches</metric>
+      </metrics>
+      <constants>
+        <enumeratedValueSet variable="mean-init-A">
+          <value value="0"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="sd-init-A">
+          <value value="0"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="gamma">
+          <value value="100"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="probability-of-convergence">
+          <value value="50"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="delta">
+          <value value="10"></value>
+        </enumeratedValueSet>
+        <steppedValueSet variable="max-h" first="0" step="10" last="100"></steppedValueSet>
+        <steppedValueSet variable="probability-of-spin-up" first="5" step="10" last="95"></steppedValueSet>
+        <enumeratedValueSet variable="mean-init-alpha">
+          <value value="5"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="sd-init-alpha">
+          <value value="1"></value>
+        </enumeratedValueSet>
+      </constants>
+    </experiment>
+    <experiment name="16Oct_full_model_all" repetitions="10" sequentialRunOrder="true" runMetricsEveryStep="true">
+      <setup>setup</setup>
+      <go>go</go>
+      <exitCondition><![CDATA[ticks >= 25000]]></exitCondition>
+      <metrics>
+        <metric>ticks</metric>
+        <metric>last-flip-tick</metric>
+        <metric>outcome</metric>
+        <metric>initial-fraction</metric>
+        <metric>frac-believing</metric>
+        <metric>magnetization</metric>
+        <metric>total-flips</metric>
+        <metric>persistent-fraction</metric>
+        <metric>interface-density</metric>
+        <metric>cluster-count</metric>
+        <metric>largest-cluster-fraction</metric>
+        <metric>largest-believer-cluster-fraction</metric>
+        <metric>initial-clusters</metric>
+        <metric>initial-largest</metric>
+        <metric>count patches</metric>
+      </metrics>
+      <constants>
+        <steppedValueSet variable="mean-init-A" first="0" step="0.3" last="1"></steppedValueSet>
+        <enumeratedValueSet variable="sd-init-A">
+          <value value="0"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="gamma">
+          <value value="50"></value>
+        </enumeratedValueSet>
+        <steppedValueSet variable="probability-of-convergence" first="0" step="25" last="100"></steppedValueSet>
+        <enumeratedValueSet variable="delta">
+          <value value="25"></value>
+        </enumeratedValueSet>
+        <steppedValueSet variable="max-h" first="0" step="25" last="100"></steppedValueSet>
+        <steppedValueSet variable="probability-of-spin-up" first="5" step="15" last="95"></steppedValueSet>
+        <steppedValueSet variable="mean-init-alpha" first="1" step="3" last="9"></steppedValueSet>
+        <enumeratedValueSet variable="sd-init-alpha">
+          <value value="1"></value>
+        </enumeratedValueSet>
+      </constants>
+    </experiment>
+  </experiments>
+</model>
