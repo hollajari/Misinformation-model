@@ -8,7 +8,7 @@ A Netlogo model for misinformation, adapted from Social Impact Theory
 │   ├──
 │   └──
 │
-├── Improved model including Analytical thinking (B)/
+├── Improved model including Analytical thinking (A)/
 │   ├── 
 │   ├── 
 │   ├── 
