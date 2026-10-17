@@ -20,7 +20,7 @@ A Netlogo model for misinformation, adapted from Social Impact Theory
 │   ├── 
 │   └── 
 │
-├── Improved model including fact-checking campaign/
+├── Improved model including Susceptibility to Distant Information (1 / alpha)/
 │   ├── 
 │   ├── 
 │   ├── 
