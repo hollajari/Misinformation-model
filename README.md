@@ -19,7 +19,9 @@ A Netlogo model for misinformation, adapted from Social Impact Theory
 │   ├── Full_model_individual_parameter_visualization.R # R code for initial visualization of parameters on order parameters
 │   └── 
 │
-├── 
+├── Data//
+│   ├── split_alpha,csv                                 # Dataframe from simulation with split alpha
+│   └── final.csv                                       # Dataframe from final model
 ```
 
 ---
