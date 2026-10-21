@@ -335,7 +335,7 @@ convergence_alpha <- df_end |>
   scale_fill_manual(values = c("Consensus Believe"       = "#F8766D",
                                "No Consensus"            = "#619CFF",
                                "Consensus Don't Believe" = "#7CAE00")) +
-  labs(x = "1 / Alpha --> Receptiveness of distant information ", y = "Proportion of runs") +
+  labs(x = "Alpha", y = "Proportion of runs") +
   theme_minimal()
 convergence_alpha
 ggsave(".png", convergence_alpha)
@@ -611,3 +611,69 @@ fraction_all <- df_end |>
   theme_minimal()
 fraction_all
 ggsave(".png", fraction_all)
+
+#####
+# Appendix
+#####
+
+convergence_extra <- df_end |>
+  filter(probability.of.spin.up %in% c(35, 50, 65)) |>
+  mutate(Outcome   = factor(Outcome, levels = lv),
+         field_bin = cut_width(net_field, width = 20, center = 0)) |>
+  ggplot(aes(field_bin, fill = Outcome)) +
+  geom_bar(position = "fill", width = 0.9) +
+  facet_wrap(~ mean.init.alpha, nrow = 1, scales = "free_x",
+             labeller = labeller(mean.init.alpha = \(x) paste0("alpha = ", x))) +
+  scale_fill_manual(values = c("Consensus Believe"       = "#F8766D",
+                               "No Consensus"            = "#619CFF",
+                               "Consensus Don't Believe" = "#7CAE00")) +
+  labs(x = "Net effect of all A, B and H (negative = towards disbelief)",
+       y = "Proportion of runs") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+convergence_extra
+ggsave(".png", convergence_extra)
+
+coefs <- df_end |>
+  group_by(mean.init.alpha) |>
+  summarise(b  = cov(net_field, frac.believing) / var(net_field),
+            .groups = "drop") |>
+  mutate(label = sprintf("b = %.3f per 10 units", 10 * b))
+
+fraction_extra <- df_end |>
+  ggplot(aes(net_field, frac.believing)) +
+  geom_jitter(
+    aes(colour = Outcome),
+    height = 0,
+    alpha = 0.15,
+    size = 1
+  ) +
+  geom_smooth(
+    aes(group = 1),
+    method = "gam",
+    formula = y ~ s(x, bs = "cs"),
+    method.args = list(family = quasibinomial),
+    colour = "black",
+    linewidth = 1
+  ) +
+  geom_text(
+    data = coefs,
+    aes(x = -Inf, y = Inf, label = label),
+    hjust = -0.15, vjust = 2.5, size = 3.5,
+    inherit.aes = FALSE
+  ) +
+  facet_wrap(~ mean.init.alpha, ncol = 1,
+             labeller = labeller(mean.init.alpha = \(x) paste0("alpha = ", x))) +
+  scale_colour_manual(
+    values = c(
+      "Consensus Believe"       = "#F8766D",
+      "No Consensus"            = "#619CFF",
+      "Consensus Don't Believe" = "#7CAE00"
+    )
+  ) +
+  coord_cartesian(ylim = c(0, 1)) +
+  labs(x = "Net effect of all A, B and H (negative = towards disbelief)",
+       y = "Final fraction believing", colour = "Outcome") +
+  theme_minimal()
+fraction_extra
+ggsave(".png", fraction_extra)
